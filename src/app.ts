@@ -1,9 +1,62 @@
 // Code goes here!
+//Project Type
+enum ProjectStatus {
+  Active,
+  Finished,
+}
+class Project {
+  constructor(
+    public id: string,
+    public title: string,
+    public description: string,
+    public people: number,
+    public status: ProjectStatus
+  ) {}
+}
 
 //Project State Management
+type Listener = (items: Project[]) => void
 
-class ProjectState {}
+class ProjectState {
+  private listeners: Listener[] = []
+  private projects: Project[] = []
+  private static instance: ProjectState
+  private constructor() {}
 
+  static getInstance() {
+    if (this.instance) {
+      return this.instance
+    }
+    this.instance = new ProjectState()
+    return this.instance
+  }
+
+  addListeners(listenerFn: Listener) {
+    this.listeners.push(listenerFn)
+  }
+
+  addProject(title: string, description: string, numOfPeople: number) {
+    // const newProject = {
+    //   id: Math.random().toString(),
+    //   title,
+    //   description,
+    //   people: numOfPeople,
+    // }
+    const newProject = new Project(
+      Math.random().toString(),
+      title,
+      description,
+      numOfPeople,
+      ProjectStatus.Active
+    )
+    this.projects.push(newProject)
+    for (const listenerFn of this.listeners) {
+      listenerFn(this.projects.slice())
+    }
+  }
+}
+
+const projectState = ProjectState.getInstance()
 // Validation logic
 interface Validatable {
   value: string | number
@@ -64,23 +117,83 @@ function Autobind(_: any, __: string, descriptor: PropertyDescriptor) {
   return adjDescriptor
 }
 
+//Component Base Class
+abstract class Component<T extends HTMLElement, U extends HTMLElement> {
+  templateElement: HTMLTemplateElement
+  hostElement: T
+  element: U
+
+  constructor(
+    templateId: string,
+    hostElementId: string,
+    insertAtStart: boolean,
+    newElementId?: string
+  ) {
+    this.templateElement = document.getElementById(
+      templateId
+    )! as HTMLTemplateElement
+    this.hostElement = document.getElementById(hostElementId)! as T
+
+    const importedNode = document.importNode(this.templateElement.content, true)
+    this.element = importedNode.firstElementChild as U
+    if (newElementId) this.element.id = newElementId
+
+    this.attach(insertAtStart)
+  }
+  private attach(insertAtStart: boolean) {
+    this.hostElement.insertAdjacentElement(
+      insertAtStart ? "afterbegin" : "beforeend",
+      this.element
+    )
+  }
+  abstract configure(): void
+
+  abstract renderContent: void
+}
+
 class ProjectList {
   templateElement: HTMLTemplateElement
   hostElement: HTMLDivElement
   element: HTMLElement
+  assignedProjects: Project[]
 
   constructor(private type: "active" | "finished") {
     this.templateElement = document.getElementById(
       "project-list"
     )! as HTMLTemplateElement
     this.hostElement = document.getElementById("app")! as HTMLDivElement
+    this.assignedProjects = []
 
     const importedNode = document.importNode(this.templateElement.content, true)
     this.element = importedNode.firstElementChild as HTMLElement
     this.element.id = `${this.type}-project`
 
+    projectState.addListeners((projects: Project[]) => {
+      const relevantProjects = projects.filter((prj) => {
+        if (this.type === "active") {
+          return prj.status === ProjectStatus.Active
+        } else {
+          return prj.status === ProjectStatus.Finished
+        }
+      })
+      this.assignedProjects = relevantProjects
+      this.renderProjects()
+    })
+
     this.attach()
     this.renderContent()
+  }
+
+  private renderProjects() {
+    const listEl = document.getElementById(
+      `${this.type}-projects-list`
+    )! as HTMLUListElement
+    listEl.innerHTML = ""
+    for (const prjItem of this.assignedProjects) {
+      const listItem = document.createElement("li")
+      listItem.textContent = prjItem.title
+      listEl.appendChild(listItem)
+    }
   }
 
   private renderContent() {
@@ -167,6 +280,7 @@ class ProjectInput {
     if (Array.isArray(userInput)) {
       const [title, description, people] = userInput
       console.log(title, description, people)
+      projectState.addProject(title, description, people)
       this.clearInput()
     }
   }
